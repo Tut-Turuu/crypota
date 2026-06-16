@@ -1,0 +1,2 @@
+g++ crypto/aes.cpp && ./a.out
+g++ crypto/signature.cpp crypto/rsa.cpp crypto/primes_and_pow.cpp -lgmp -lgmpxx && ./a.out
