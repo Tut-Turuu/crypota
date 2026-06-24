@@ -1,17 +1,15 @@
-add_executable(network
-    src/client.cpp
+file(GLOB NETWORK_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
+add_library(network STATIC ${NETWORK_SOURCES})
+
+
+target_include_directories(network
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc
+)
 
 target_link_libraries(network
     crypto
-    asio
 )
-
-
-target_include_directories(network_app
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/inc
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-

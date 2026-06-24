@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <gmp.h>
 #include <gmpxx.h>
-#include "serializers.hpp"
+#include "mpz_string.hpp"
 
 
-mpz_class serialize_string(std::string str) {
+mpz_class string_to_mpz(const std::string& str) {
     mpz_class result;
     
     if (str.empty()) {
@@ -20,7 +20,7 @@ mpz_class serialize_string(std::string str) {
     return result;
 }
 
-std::string serialize_to_string(mpz_class num) {
+std::string mpz_to_string(const mpz_class& num) {
     if (num == 0) {
         return "";
     }

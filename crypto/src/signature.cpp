@@ -1,7 +1,7 @@
 #include "rsa.hpp"
 #include "sha256.hpp"
-#include "serializers.hpp"
 #include "signature.hpp"
+#include "mpz_string.hpp"
 
 
 Signer::Signer(rsa::key_t key) {
@@ -10,7 +10,7 @@ Signer::Signer(rsa::key_t key) {
 
 std::string Signer::sign(std::string str) {
     std::string hash = sha256(str);
-    return serialize_to_string(rsa::encrypt_message(serialize_string(hash), priv));
+    return mpz_to_string(rsa::encrypt_message(string_to_mpz(hash), priv));
 }
 
 
@@ -20,7 +20,7 @@ Verifier::Verifier(rsa::key_t key) {
 
 bool Verifier::verify(std::string signature, std::string original) {
     std::string hash = sha256(original);
-    std::string res = serialize_to_string(rsa::decrypt_message(serialize_string(signature), pub));
+    std::string res = mpz_to_string(rsa::decrypt_message(string_to_mpz(signature), pub));
     return hash == res;
 }
 

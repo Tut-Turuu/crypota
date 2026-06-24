@@ -47,8 +47,6 @@ namespace aes {
 
     int count_ones(u8* block, int n);
 
-    void key_gen(u8* key, int n);
-
     struct key_t {
         u8 key[16];
     };
@@ -56,6 +54,10 @@ namespace aes {
     struct expanded_key_t {
         u8 word128x11[16*11];
     };
+
+    void key_gen(key_t& key);
+
+
 
     class Chipher {
         private:
@@ -70,5 +72,13 @@ namespace aes {
             std::string decrypt_string(const std::string& str);
 
     };
+
+    std::string serialize_key_to_string(const key_t& key);
+
+    key_t deserialize_string_to_key(const std::string& str);
+
+    void store_key(const std::string& filename, const key_t& key);
+
+    key_t load_key(const std::string& filename);
 } 
 

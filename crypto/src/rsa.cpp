@@ -1,10 +1,13 @@
 #include <vector>
-#include "primes_and_pow.hpp"
-#include "rsa.hpp"
-#include "serializers.hpp"
 #include <fstream>
 #include <filesystem>
 #include <iostream>
+#include "primes_and_pow.hpp"
+#include "rsa.hpp"
+#include "mpz_string.hpp"
+#include "storage.hpp"
+
+#define BITS 1024
 
 namespace rsa {
 
@@ -63,7 +66,8 @@ namespace rsa {
         return pow_by_mod(message, key.exp, key.mod);
     }
 
-    RSA::RSA(unsigned bits_size) {
+    RSA::RSA() {
+        unsigned bits_size = BITS;
         mpz_class p = generate_prime(bits_size);
         mpz_class q = generate_prime(bits_size);
         while (p == q)
@@ -93,89 +97,51 @@ namespace rsa {
 
 
 
-    namespace fs = std::filesystem;
 
-    // Вспомогательная функция для создания директорий
-    void ensure_directory_exists(const std::string& filepath) {
-        fs::path path(filepath);
-        fs::path parent = path.parent_path();
+    std::string serialize_key_to_string(const key_t& key) {
+        std::string exp_str = mpz_to_string(key.exp);
+        std::string mod_str = mpz_to_string(key.mod);
         
-        if (!parent.empty() && !fs::exists(parent)) {
-            if (!fs::create_directories(parent)) {
-                throw std::runtime_error("Failed to create directory: " + parent.string());
-            }
-        }
-    }
-
-    void store_key(std::string filename, const key_t& key) {
-        // Создаем директории, если их нет
-        ensure_directory_exists(filename);
-        
-        std::ofstream file(filename, std::ios::binary);
-        if (!file.is_open()) {
-            throw std::runtime_error("Failed to open file for writing: " + filename);
-        }
-        
-        // Serialize exp and mod
-        std::string exp_str = serialize_to_string(key.exp);
-        std::string mod_str = serialize_to_string(key.mod);
-        
-        // Write lengths first, then the data
+        std::string result;
         size_t exp_len = exp_str.size();
         size_t mod_len = mod_str.size();
         
-        file.write(reinterpret_cast<const char*>(&exp_len), sizeof(exp_len));
-        file.write(exp_str.c_str(), exp_len);
+        result.append(reinterpret_cast<const char*>(&exp_len), sizeof(exp_len));
+        result.append(exp_str);
+        result.append(reinterpret_cast<const char*>(&mod_len), sizeof(mod_len));
+        result.append(mod_str);
         
-        file.write(reinterpret_cast<const char*>(&mod_len), sizeof(mod_len));
-        file.write(mod_str.c_str(), mod_len);
+        return result;
+    }
+
+    key_t deserialize_string_to_key(const std::string& data) {
+        key_t key;
+        size_t offset = 0;
         
-        file.close();
+        size_t exp_len;
+        memcpy(&exp_len, data.data() + offset, sizeof(exp_len));
+        offset += sizeof(exp_len);
+        
+        std::string exp_str = data.substr(offset, exp_len);
+        offset += exp_len;
+        key.exp = string_to_mpz(exp_str);
+        
+        size_t mod_len;
+        memcpy(&mod_len, data.data() + offset, sizeof(mod_len));
+        offset += sizeof(mod_len);
+        
+        std::string mod_str = data.substr(offset, mod_len);
+        key.mod = string_to_mpz(mod_str);
+        
+        return key;
+    }
+
+    void store_key(std::string filename, const key_t& key) {
+        store_string(filename, serialize_key_to_string(key));
     }
 
     key_t load_key(std::string filename) {
-        // Проверяем, существует ли файл
-        if (!fs::exists(filename)) {
-            throw std::runtime_error("File does not exist: " + filename);
-        }
-        
-        std::ifstream file(filename, std::ios::binary);
-        if (!file.is_open()) {
-            throw std::runtime_error("Failed to open file for reading: " + filename);
-        }
-        
-        key_t key;
-        
-        // Read length and data for exp
-        size_t exp_len;
-        file.read(reinterpret_cast<char*>(&exp_len), sizeof(exp_len));
-        if (!file.good()) {
-            throw std::runtime_error("Failed to read exp length from file");
-        }
-        
-        std::string exp_str(exp_len, '\0');
-        file.read(&exp_str[0], exp_len);
-        if (!file.good()) {
-            throw std::runtime_error("Failed to read exp data from file");
-        }
-        key.exp = serialize_string(exp_str);
-        
-        // Read length and data for mod
-        size_t mod_len;
-        file.read(reinterpret_cast<char*>(&mod_len), sizeof(mod_len));
-        if (!file.good()) {
-            throw std::runtime_error("Failed to read mod length from file");
-        }
-        
-        std::string mod_str(mod_len, '\0');
-        file.read(&mod_str[0], mod_len);
-        if (!file.good()) {
-            throw std::runtime_error("Failed to read mod data from file");
-        }
-        key.mod = serialize_string(mod_str);
-        
-        file.close();
-        return key;
+        return deserialize_string_to_key(load_string(filename));
     }
 
 }

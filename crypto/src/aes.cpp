@@ -2,6 +2,7 @@
 #include <bitset>
 #include <cstring>
 #include <vector>
+#include "storage.hpp"
 
 namespace aes {
 
@@ -301,63 +302,74 @@ namespace aes {
         return res;
     }
 
-    void key_gen(u8* key, int n) {
-        for (int i = 0; i < n; ++i) {
-            key[i] = rand() % 256;
+    void key_gen(key_t& key) {
+        for (int i = 0; i < 16; ++i) {
+            key.key[i] = rand() % 256;
         }
     }
 
-    struct key_t {
-        u8 key[16];
+
+    Chipher::Chipher(key_t init_key) {
+        memcpy(key.key, init_key.key, sizeof(key.key));
+        key_expansion(init_key.key, expanded_key.word128x11);
+    }
+
+    std::string Chipher::encrypt_string(const std::string& str) {
+
+        size_t len = str.length();
+        size_t padded_len = ((len + 15) / 16) * 16;
+        u8 padding = padded_len - len;
+        
+        std::vector<u8> data(padded_len);
+        memcpy(data.data(), str.c_str(), len);
+        for (size_t i = len; i < padded_len; i++) data[i] = 0;
+
+        for (size_t i = 0; i < padded_len; i += 16) {
+            cipher128(data.data() + i, expanded_key.word128x11);
+        }
+        
+        return std::string(data.begin(), data.end());
+    }
+
+    std::string Chipher::decrypt_string(const std::string& str) {
+        std::vector<u8> data(str.begin(), str.end());
+        
+        for (size_t i = 0; i < data.size(); i += 16) {
+            invcipher128(data.data() + i, expanded_key.word128x11);
+        }
+        
+        size_t original_len = data.size();
+        while (original_len > 0 && data[original_len - 1] == 0) {
+            original_len--;
+        }
+        data.resize(original_len);
+
+        return std::string(data.begin(), data.end());
+    
     };
 
-    struct expanded_key_t {
-        u8 word128x11[16*11];
-    };
+    std::string serialize_key_to_string(const key_t& key) {
+        return std::string(reinterpret_cast<const char*>(key.key), sizeof(key.key));
+    }
 
-    class Chipher {
-        private:
-            key_t key;
-            expanded_key_t expanded_key;
-        public:
-            Chipher(key_t init_key) {
-                memcpy(key.key, init_key.key, sizeof(key.key));
-                key_expansion(init_key.key, expanded_key.word128x11);
-            }
+    key_t deserialize_string_to_key(const std::string& str) {
+        if (str.size() != 16) {
+            throw std::runtime_error("Invalid key size: expected 16 bytes, got " + std::to_string(str.size()));
+        }
+        
+        key_t result;
+        memcpy(result.key, str.data(), 16);
+        return result;
+    }
 
-            std::string encrypt_string(const std::string& str) {
+    void store_key(const std::string& filename, const key_t& key) {
+        store_string(filename, serialize_key_to_string(key));
+    }
 
-                size_t len = str.length();
-                size_t padded_len = ((len + 15) / 16) * 16;
-                u8 padding = padded_len - len;
-                
-                std::vector<u8> data(padded_len);
-                memcpy(data.data(), str.c_str(), len);
-                for (size_t i = len; i < padded_len; i++) data[i] = 0;
+    key_t load_key(const std::string& filename) {
+        return deserialize_string_to_key(load_string(filename));
+    }
 
-                for (size_t i = 0; i < padded_len; i += 16) {
-                    cipher128(data.data() + i, expanded_key.word128x11);
-                }
-                
-                return std::string(data.begin(), data.end());
-            }
-
-            std::string decrypt_string(const std::string& str) {
-                std::vector<u8> data(str.begin(), str.end());
-                
-                for (size_t i = 0; i < data.size(); i += 16) {
-                    invcipher128(data.data() + i, expanded_key.word128x11);
-                }
-                
-                size_t original_len = data.size();
-                while (original_len > 0 && data[original_len - 1] == 0) {
-                    original_len--;
-                }
-                data.resize(original_len);
-
-                return std::string(data.begin(), data.end());
-            }
-    };
 } 
 
 

@@ -25,12 +25,15 @@ namespace rsa {
         mpz_class d;
 
     public:
-        RSA(unsigned bits_size);
+        RSA();
 
         key_t share_my_public_key();
         key_t share_my_private_key();
 
 	};
+
+    key_t deserialize_string_to_key(const std::string& data);
+    std::string serialize_key_to_string(const key_t& key);
 
     key_t load_key(std::string filename);
     void store_key(std::string filename, const key_t& key);
