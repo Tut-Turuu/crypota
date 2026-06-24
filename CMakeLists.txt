@@ -104,12 +104,22 @@ else()
 endif()
 
 
-
-add_executable("${PROJECT_NAME}" test1.cpp)
+add_executable(client test1.cpp)
+add_executable(server test2.cpp)
 # add_executable("${PROJECT_NAME}" main.cpp)
 
 
-target_link_libraries("${PROJECT_NAME}" 
+
+target_link_libraries(client
+    GMP::GMP
+    BoostAsio::BoostAsio
+    pthread
+    filesys
+    crypto
+    network
+)
+
+target_link_libraries(server
     GMP::GMP
     BoostAsio::BoostAsio
     pthread
