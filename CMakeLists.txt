@@ -108,11 +108,40 @@ else()
 endif()
 
 
+find_package(PkgConfig REQUIRED)
+
+set(WEBVIEW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(WEBVIEW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(WEBVIEW_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+
+pkg_check_modules(WEBKIT2GTK webkit2gtk-4.1)
+if(NOT WEBKIT2GTK_FOUND)
+    pkg_check_modules(WEBKIT2GTK REQUIRED webkit2gtk-4.0)
+endif()
+
+pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+
+FetchContent_Declare(
+    webview
+    GIT_REPOSITORY https://github.com/webview/webview.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(webview)
+
+add_executable(client_gui interface/main.cpp)
 add_executable(client test1.cpp)
 add_executable(serv test2.cpp)
 # add_executable("${PROJECT_NAME}" main.cpp)
 
-
+target_link_libraries(client_gui
+    GMP::GMP
+    BoostAsio::BoostAsio
+    pthread
+    filesys
+    crypto
+    network
+    webview::core
+)
 
 target_link_libraries(client
     GMP::GMP
@@ -131,3 +160,5 @@ target_link_libraries(serv
     crypto
     network
 )
+
+file(COPY ${CMAKE_SOURCE_DIR}/interface/src DESTINATION ${CMAKE_BINARY_DIR})
