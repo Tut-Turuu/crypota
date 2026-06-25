@@ -4,21 +4,17 @@
 #include "mpz_string.hpp"
 
 
-Signer::Signer(rsa::key_t key) {
-    priv = key;
-}
+Signer::Signer(const rsa::key_t& key): priv(key) {}
 
-std::string Signer::sign(std::string str) {
+std::string Signer::sign(const std::string& str) {
     std::string hash = sha256(str);
     return mpz_to_string(rsa::encrypt_message(string_to_mpz(hash), priv));
 }
 
 
-Verifier::Verifier(rsa::key_t key) {
-    pub = key;
-}
+ Verifier::Verifier(const rsa::key_t& key): pub(key) {}
 
-bool Verifier::verify(std::string signature, std::string original) {
+bool Verifier::verify(const std::string& signature, const std::string& original) {
     std::string hash = sha256(original);
     std::string res = mpz_to_string(rsa::decrypt_message(string_to_mpz(signature), pub));
     return hash == res;

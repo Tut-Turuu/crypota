@@ -187,7 +187,7 @@ void _sha256(const u8* in, u32 sz, u8* out) {
     memcpy(out + 24, &h6, 4);
     memcpy(out + 28, &h7, 4);
 
-    delete padded;
+    delete[] padded;
 
 }
 

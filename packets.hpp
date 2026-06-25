@@ -26,25 +26,52 @@ namespace packet_utils {
                (static_cast<uint32_t>(static_cast<unsigned char>(data[offset + 2])) << 8) |
                static_cast<uint32_t>(static_cast<unsigned char>(data[offset + 3]));
     }
+
+    inline std::string string_to_packet(const std::string& str) {
+        uint32_t len = static_cast<uint32_t>(str.size());
+        return number_to_string(len) + str;
+    }
+
+    // Извлекает строку из payload, начиная с offset, обновляет offset
+    inline std::string string_from_packet(const std::string& payload, size_t& offset) {
+        if (offset + 4 > payload.size()) {
+            throw std::invalid_argument("Not enough data for length");
+        }
+        uint32_t len = string_to_number(payload, offset);
+        offset += 4;
+        if (offset + len > payload.size()) {
+            throw std::invalid_argument("Not enough data for string content");
+        }
+        std::string result = payload.substr(offset, len);
+        offset += len;
+        return result;
+    }
 }
 
 // ==================== ENUM ====================
 
 enum class packet_type : uint32_t {
-    registration_req = 0x01,
-    registration_res = 0x02,
-    message_req = 0x03,
-    message_res = 0x04,
-    get_other_pub_req = 0x05,
-    get_other_pub_res = 0x06,
-    send_sym_req = 0x07,
-    send_sym_res = 0x08
+    handshake_req1,
+    handshake_res1,
+    handshake_req2,
+    handshake_res2,
+    registration_req,
+    registration_res,
+    message_req,
+    message_res,
+    get_other_pub_req,
+    get_other_pub_res,
+    send_sym_req,
+    send_sym_res,
+    ping_req,
+    ping_res,
+    
 };
 
 enum class status_codes : uint32_t {
-    delivered = 0,
-    error = 1,
-    not_found = 2
+    delivered,
+    error,
+    not_found
 };
 
 // ==================== БАЗОВЫЙ КЛАСС ====================
@@ -61,8 +88,331 @@ struct Packet {
     static std::unique_ptr<Packet> from_raw(const std::string& raw);
 };
 
-// ==================== ВСЕ ПАКЕТЫ ====================
 
+
+// ============================================================================
+// PING REQUEST (просто сигнал)
+// ============================================================================
+struct PingRequest : public Packet {
+    PingRequest() = default;
+
+    packet_type type() const override {
+        return packet_type::ping_req;
+    }
+
+    std::string serialize() const override {
+        // Формат: [type(4)]
+        std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type()));
+        return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
+    }
+
+    std::string to_string() const override {
+        return "PingRequest{}";
+    }
+
+    static std::unique_ptr<PingRequest> from_payload(const std::string& payload) {
+        if (payload.size() < 4) {
+            throw std::invalid_argument("Payload too small for PingRequest");
+        }
+
+        uint32_t type_val = packet_utils::string_to_number(payload, 0);
+        if (type_val != static_cast<uint32_t>(packet_type::ping_req)) {
+            throw std::invalid_argument("Invalid packet type");
+        }
+
+        return std::make_unique<PingRequest>();
+    }
+};
+
+// ============================================================================
+// PING RESPONSE (просто сигнал)
+// ============================================================================
+struct PingResponse : public Packet {
+    PingResponse() = default;
+
+    packet_type type() const override {
+        return packet_type::ping_res;
+    }
+
+    std::string serialize() const override {
+        // Формат: [type(4)]
+        std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type()));
+        return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
+    }
+
+    std::string to_string() const override {
+        return "PingResponse{}";
+    }
+
+    static std::unique_ptr<PingResponse> from_payload(const std::string& payload) {
+        if (payload.size() < 4) {
+            throw std::invalid_argument("Payload too small for PingResponse");
+        }
+
+        uint32_t type_val = packet_utils::string_to_number(payload, 0);
+        if (type_val != static_cast<uint32_t>(packet_type::ping_res)) {
+            throw std::invalid_argument("Invalid packet type");
+        }
+
+        return std::make_unique<PingResponse>();
+    }
+};
+
+// ============================================================================
+// 1. HandshakeRequest1 (первый запрос)
+// ============================================================================
+struct HandshakeRequest1 : public Packet {
+    std::string client_random;
+    uint32_t user_id = 0;
+
+    HandshakeRequest1() = default;
+    HandshakeRequest1(std::string cr, uint32_t uid)
+        : client_random(std::move(cr)), user_id(uid) {}
+
+    packet_type type() const override {
+        return packet_type::handshake_req1;   // добавьте в enum
+    }
+
+    std::string serialize() const override {
+        // Формат: [type(4)] [client_random_len(4)+data] [user_id(4)]
+        std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type()));
+        payload += packet_utils::string_to_packet(client_random);
+        payload += packet_utils::number_to_string(user_id);
+        return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
+    }
+
+    std::string to_string() const override {
+        return "HandshakeRequest1{client_random=" + client_random +
+               ", user_id=" + std::to_string(user_id) + "}";
+    }
+
+    static std::unique_ptr<HandshakeRequest1> from_payload(const std::string& payload) {
+        // Минимум: type(4) + length(4) + user_id(4) = 12 байт (если строка не пустая)
+        if (payload.size() < 12) {
+            throw std::invalid_argument("Payload too small for HandshakeRequest1");
+        }
+
+        uint32_t type_val = packet_utils::string_to_number(payload, 0);
+        if (type_val != static_cast<uint32_t>(packet_type::handshake_req1)) {
+            throw std::invalid_argument("Invalid packet type");
+        }
+
+        size_t offset = 4;
+        auto req = std::make_unique<HandshakeRequest1>();
+        req->client_random = packet_utils::string_from_packet(payload, offset);
+        req->user_id = packet_utils::string_to_number(payload, offset);
+        offset += 4;
+
+        if (req->client_random.empty()) {
+            throw std::invalid_argument("Empty client_random");
+        }
+
+
+        return req;
+    }
+};
+
+// ============================================================================
+// 2. HandshakeResponse1 (первый ответ)
+// ============================================================================
+struct HandshakeResponse1 : public Packet {
+    status_codes status = status_codes::error;
+    std::string server_random;
+    std::string signature;   // подпись сервера
+
+    HandshakeResponse1() = default;
+
+    // Конструктор для успешного ответа
+    explicit HandshakeResponse1(const std::string& srv_rand, const std::string& sig)
+        : status(status_codes::delivered)
+        , server_random(srv_rand)
+        , signature(sig) {}
+
+    // Конструктор для ответа с ошибкой
+    explicit HandshakeResponse1(status_codes st)
+        : status(st)
+        , server_random("")
+        , signature("") {}
+
+    packet_type type() const override {
+        return packet_type::handshake_res1;   // добавьте в enum
+    }
+
+    std::string serialize() const override {
+        std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type()));
+        payload += packet_utils::number_to_string(static_cast<uint32_t>(status));
+        payload += packet_utils::string_to_packet(server_random);
+        payload += packet_utils::string_to_packet(signature);
+        return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
+    }
+
+    std::string to_string() const override {
+        if (status == status_codes::delivered) {
+            return "HandshakeResponse1{status=delivered, server_random=" + server_random +
+                   ", signature=" + signature + "}";
+        } else {
+            return "HandshakeResponse1{status=" + std::to_string(static_cast<uint32_t>(status)) + "}";
+        }
+    }
+
+    static std::unique_ptr<HandshakeResponse1> from_payload(const std::string& payload) {
+        // Минимум: type(4) + status(4) + две длины(8) = 16 байт (если строки не пустые)
+        if (payload.size() < 16) {
+            throw std::invalid_argument("Payload too small for HandshakeResponse1");
+        }
+
+        uint32_t type_val = packet_utils::string_to_number(payload, 0);
+        if (type_val != static_cast<uint32_t>(packet_type::handshake_res1)) {
+            throw std::invalid_argument("Invalid packet type");
+        }
+
+        uint32_t status_val = packet_utils::string_to_number(payload, 4);
+        if (status_val > 2) {
+            throw std::invalid_argument("Invalid status code");
+        }
+
+        auto resp = std::make_unique<HandshakeResponse1>();
+        resp->status = static_cast<status_codes>(status_val);
+
+        if (status_val == static_cast<uint32_t>(status_codes::delivered)) {
+            size_t offset = 8;
+            resp->server_random = packet_utils::string_from_packet(payload, offset);
+            resp->signature = packet_utils::string_from_packet(payload, offset);
+
+            if (resp->server_random.empty() || resp->signature.empty()) {
+                throw std::invalid_argument("Missing server_random or signature in success response");
+            }
+        }
+        return resp;
+    }
+
+    // Фабричные методы
+    static std::unique_ptr<Packet> success(const std::string& srv_rand, const std::string& sig) {
+        return std::make_unique<HandshakeResponse1>(srv_rand, sig);
+    }
+
+    static std::unique_ptr<Packet> error() {
+        return std::make_unique<HandshakeResponse1>(status_codes::error);
+    }
+
+    static std::unique_ptr<Packet> not_found() {
+        return std::make_unique<HandshakeResponse1>(status_codes::not_found);
+    }
+
+    bool is_success() const { return status == status_codes::delivered; }
+};
+
+// ============================================================================
+// 3. HandshakeRequest2 (второй запрос)
+// ============================================================================
+struct HandshakeRequest2 : public Packet {
+    std::string signature;                // подпись клиента
+    std::string encrypted_session_id;     // зашифрованный session_id
+
+    HandshakeRequest2() = default;
+    HandshakeRequest2(std::string sig, std::string enc)
+        : signature(std::move(sig))
+        , encrypted_session_id(std::move(enc)) {}
+
+    packet_type type() const override {
+        return packet_type::handshake_req2;   // добавьте в enum
+    }
+
+    std::string serialize() const override {
+        // Формат: [type(4)] [signature_len(4)+data] [encrypted_session_id_len(4)+data]
+        std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type()));
+        payload += packet_utils::string_to_packet(signature);
+        payload += packet_utils::string_to_packet(encrypted_session_id);
+        return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
+    }
+
+    std::string to_string() const override {
+        return "HandshakeRequest2{signature=" + signature +
+               ", encrypted_session_id=" + encrypted_session_id + "}";
+    }
+
+    static std::unique_ptr<HandshakeRequest2> from_payload(const std::string& payload) {
+        // Минимум: type(4) + две длины(8) = 12 байт
+        if (payload.size() < 12) {
+            throw std::invalid_argument("Payload too small for HandshakeRequest2");
+        }
+
+        uint32_t type_val = packet_utils::string_to_number(payload, 0);
+        if (type_val != static_cast<uint32_t>(packet_type::handshake_req2)) {
+            throw std::invalid_argument("Invalid packet type");
+        }
+
+        size_t offset = 4;
+        auto req = std::make_unique<HandshakeRequest2>();
+        req->signature = packet_utils::string_from_packet(payload, offset);
+        req->encrypted_session_id = packet_utils::string_from_packet(payload, offset);
+
+        if (req->signature.empty() || req->encrypted_session_id.empty()) {
+            throw std::invalid_argument("Empty field in HandshakeRequest2");
+        }
+
+        return req;
+    }
+};
+
+// ============================================================================
+// 4. HandshakeResponse2 (второй ответ) - только статус
+// ============================================================================
+struct HandshakeResponse2 : public Packet {
+    status_codes status = status_codes::error;
+
+    HandshakeResponse2() = default;
+    explicit HandshakeResponse2(status_codes st) : status(st) {}
+
+    packet_type type() const override {
+        return packet_type::handshake_res2;   // добавьте в enum
+    }
+
+    std::string serialize() const override {
+        std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type()));
+        payload += packet_utils::number_to_string(static_cast<uint32_t>(status));
+        return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
+    }
+
+    std::string to_string() const override {
+        return "HandshakeResponse2{status=" + std::to_string(static_cast<uint32_t>(status)) + "}";
+    }
+
+    static std::unique_ptr<HandshakeResponse2> from_payload(const std::string& payload) {
+        if (payload.size() < 8) {
+            throw std::invalid_argument("Payload too small for HandshakeResponse2");
+        }
+
+        uint32_t type_val = packet_utils::string_to_number(payload, 0);
+        if (type_val != static_cast<uint32_t>(packet_type::handshake_res2)) {
+            throw std::invalid_argument("Invalid packet type");
+        }
+
+        uint32_t status_val = packet_utils::string_to_number(payload, 4);
+        if (status_val > 2) {
+            throw std::invalid_argument("Invalid status code");
+        }
+
+        auto resp = std::make_unique<HandshakeResponse2>();
+        resp->status = static_cast<status_codes>(status_val);
+        return resp;
+    }
+
+    // Фабричные методы
+    static std::unique_ptr<Packet> success() {
+        return std::make_unique<HandshakeResponse2>(status_codes::delivered);
+    }
+
+    static std::unique_ptr<Packet> error() {
+        return std::make_unique<HandshakeResponse2>(status_codes::error);
+    }
+
+    static std::unique_ptr<Packet> not_found() {
+        return std::make_unique<HandshakeResponse2>(status_codes::not_found);
+    }
+
+    bool is_success() const { return status == status_codes::delivered; }
+};
 // 1. Registration Request
 struct RegistrationRequest : public Packet {
     rsa::key_t public_key;
@@ -136,10 +486,6 @@ struct RegistrationResponse : public Packet {
         auto resp = std::make_unique<RegistrationResponse>();
         resp->user_id = packet_utils::string_to_number(payload, 4);
         
-        if (resp->user_id == 0) {
-            throw std::invalid_argument("Invalid user ID");
-        }
-        
         return resp;
     }
 };
@@ -181,9 +527,6 @@ struct MessageRequest : public Packet {
         req->destination_id = packet_utils::string_to_number(payload, 4);
         req->message = payload.substr(8);
         
-        if (req->destination_id == 0) {
-            throw std::invalid_argument("Invalid destination ID");
-        }
         if (req->message.empty()) {
             throw std::invalid_argument("Message cannot be empty");
         }
@@ -195,25 +538,31 @@ struct MessageRequest : public Packet {
 // 4. Message Response
 struct MessageResponse : public Packet {
     status_codes status_code = status_codes::delivered;
+    uint32_t dest_id = 0;  // ← Добавил
     
     MessageResponse() = default;
     explicit MessageResponse(status_codes code) : status_code(code) {}
     explicit MessageResponse(uint32_t code) : status_code(static_cast<status_codes>(code)) {}
+    MessageResponse(status_codes code, uint32_t dest) : status_code(code), dest_id(dest) {}
     
     packet_type type() const override { return packet_type::message_res; }
     
     std::string serialize() const override {
+        // Формат: [type(4)] [status_code(4)] [dest_id(4)]
         std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type())) +
-                              packet_utils::number_to_string(static_cast<uint32_t>(status_code));
+                              packet_utils::number_to_string(static_cast<uint32_t>(status_code)) +
+                              packet_utils::number_to_string(dest_id);
         return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
     }
     
     std::string to_string() const override {
-        return "MessageResponse{status_code=" + std::to_string(static_cast<uint32_t>(status_code)) + "}";
+        return "MessageResponse{status_code=" + std::to_string(static_cast<uint32_t>(status_code)) +
+               ", dest_id=" + std::to_string(dest_id) + "}";
     }
     
     static std::unique_ptr<MessageResponse> from_payload(const std::string& payload) {
-        if (payload.size() < 8) {
+        // Минимум: type(4) + status(4) + dest_id(4) = 12 байт
+        if (payload.size() < 12) {
             throw std::invalid_argument("Payload too small");
         }
         
@@ -223,16 +572,28 @@ struct MessageResponse : public Packet {
         }
         
         uint32_t code = packet_utils::string_to_number(payload, 4);
+        uint32_t dest = packet_utils::string_to_number(payload, 8);
         
         auto resp = std::make_unique<MessageResponse>();
         resp->status_code = static_cast<status_codes>(code);
-        
-        // Проверка что код валидный
-        if (code > 2) {
-            throw std::invalid_argument("Invalid status code");
-        }
+        resp->dest_id = dest;
         
         return resp;
+    }
+
+    bool is_success() const { return status_code == status_codes::delivered; }
+    
+    // Фабричные методы для удобства
+    static std::unique_ptr<Packet> success(uint32_t dest_id) {
+        return std::make_unique<MessageResponse>(status_codes::delivered, dest_id);
+    }
+    
+    static std::unique_ptr<Packet> error(uint32_t dest_id) {
+        return std::make_unique<MessageResponse>(status_codes::error, dest_id);
+    }
+    
+    static std::unique_ptr<Packet> not_found(uint32_t dest_id) {
+        return std::make_unique<MessageResponse>(status_codes::not_found, dest_id);
     }
 };
 
@@ -276,28 +637,37 @@ struct GetOtherPubRequest : public Packet {
     }
 };
 
-// 6. Get Other Public Key Response
+
 struct GetOtherPubResponse : public Packet {
     rsa::key_t public_key;
+    status_codes status = status_codes::delivered;  // ← добавил поле
     
     GetOtherPubResponse() = default;
-    explicit GetOtherPubResponse(const rsa::key_t& key) : public_key(key) {}
+    GetOtherPubResponse(status_codes status_code) : status(status_code) {}
+    // Конструктор для успешного ответа (с ключом)
+    explicit GetOtherPubResponse(const rsa::key_t& key) 
+        : public_key(key), status(status_codes::delivered) {}
     
     packet_type type() const override { return packet_type::get_other_pub_res; }
     
     std::string serialize() const override {
         std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type())) +
+                              packet_utils::number_to_string(static_cast<uint32_t>(status)) +
                               rsa::serialize_key_to_string(public_key);
         return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
     }
     
     std::string to_string() const override {
-        return "GetOtherPubResponse{public_key_size=" + 
-               std::to_string(rsa::serialize_key_to_string(public_key).size()) + "}";
+        if (status == status_codes::delivered) {
+            return "GetOtherPubResponse{status=delivered, key_size=" + 
+                   std::to_string(rsa::serialize_key_to_string(public_key).size()) + "}";
+        } else {
+            return "GetOtherPubResponse{status=" + std::to_string(static_cast<uint32_t>(status)) + "}";
+        }
     }
     
     static std::unique_ptr<GetOtherPubResponse> from_payload(const std::string& payload) {
-        if (payload.size() < 4) {
+        if (payload.size() < 8) {  // type(4) + status(4)
             throw std::invalid_argument("Payload too small");
         }
         
@@ -306,14 +676,40 @@ struct GetOtherPubResponse : public Packet {
             throw std::invalid_argument("Invalid packet type");
         }
         
-        auto resp = std::make_unique<GetOtherPubResponse>();
-        resp->public_key = rsa::deserialize_string_to_key(payload.substr(4));
+        uint32_t status_val = packet_utils::string_to_number(payload, 4);
+        auto status = static_cast<status_codes>(status_val);
         
-        if (rsa::serialize_key_to_string(resp->public_key).empty()) {
-            throw std::invalid_argument("Empty public key");
+
+        
+        auto resp = std::make_unique<GetOtherPubResponse>();
+        resp->status = status;
+        
+        if (status == status_codes::delivered) {
+            // Если успешно - парсим ключ
+            if (payload.size() < 8) {
+                throw std::invalid_argument("Missing key data");
+            }
+            resp->public_key = rsa::deserialize_string_to_key(payload.substr(8));
+            if (rsa::serialize_key_to_string(resp->public_key).empty()) {
+                throw std::invalid_argument("Empty public key");
+            }
         }
+        // Если статус error/not_found - ключ не парсим
         
         return resp;
+    }
+    
+    // Проверка: успешно ли
+    bool is_success() const { return status == status_codes::delivered; }
+    
+    // Фабричный метод для "не найдено"
+    static std::unique_ptr<GetOtherPubResponse> not_found() {
+        return std::make_unique<GetOtherPubResponse>(status_codes::not_found);
+    }
+    
+    // Фабричный метод для ошибки
+    static std::unique_ptr<GetOtherPubResponse> error() {
+        return std::make_unique<GetOtherPubResponse>(status_codes::error);
     }
 };
 
@@ -324,7 +720,7 @@ struct SendSymRequest : public Packet {
     
     SendSymRequest() = default;
     SendSymRequest(uint32_t dest_id, const std::string& encr_key) 
-        : destination_id(dest_id), encrypted_sym_key(enc_key) {}
+        : destination_id(dest_id), encrypted_sym_key(encr_key) {}
 
     
     packet_type type() const override { return packet_type::send_sym_req; }
@@ -355,9 +751,7 @@ struct SendSymRequest : public Packet {
         req->destination_id = packet_utils::string_to_number(payload, 4);
         req->encrypted_sym_key = payload.substr(8);
         
-        if (req->destination_id == 0) {
-            throw std::invalid_argument("Invalid destination ID");
-        }
+
         if (req->encrypted_sym_key.empty()) {
             throw std::invalid_argument("Encrypted key cannot be empty");
         }
@@ -373,25 +767,31 @@ struct SendSymRequest : public Packet {
 // 8. Send Sym Response
 struct SendSymResponse : public Packet {
     status_codes status_code = status_codes::delivered;
+    uint32_t dest_id = 0;  // ← Добавил
     
     SendSymResponse() = default;
     explicit SendSymResponse(status_codes code) : status_code(code) {}
     explicit SendSymResponse(uint32_t code) : status_code(static_cast<status_codes>(code)) {}
+    SendSymResponse(status_codes code, uint32_t dest) : status_code(code), dest_id(dest) {}
     
     packet_type type() const override { return packet_type::send_sym_res; }
     
     std::string serialize() const override {
+        // Формат: [type(4)] [status_code(4)] [dest_id(4)]
         std::string payload = packet_utils::number_to_string(static_cast<uint32_t>(type())) +
-                              packet_utils::number_to_string(static_cast<uint32_t>(status_code));
+                              packet_utils::number_to_string(static_cast<uint32_t>(status_code)) +
+                              packet_utils::number_to_string(dest_id);
         return packet_utils::number_to_string(static_cast<uint32_t>(payload.size())) + payload;
     }
     
     std::string to_string() const override {
-        return "SendSymResponse{status_code=" + std::to_string(static_cast<uint32_t>(status_code)) + "}";
+        return "SendSymResponse{status_code=" + std::to_string(static_cast<uint32_t>(status_code)) +
+               ", dest_id=" + std::to_string(dest_id) + "}";
     }
     
     static std::unique_ptr<SendSymResponse> from_payload(const std::string& payload) {
-        if (payload.size() < 8) {
+        // Минимум: type(4) + status(4) + dest_id(4) = 12 байт
+        if (payload.size() < 12) {
             throw std::invalid_argument("Payload too small");
         }
         
@@ -401,15 +801,28 @@ struct SendSymResponse : public Packet {
         }
         
         uint32_t code = packet_utils::string_to_number(payload, 4);
-        
-        if (code > 2) {
-            throw std::invalid_argument("Invalid status code");
-        }
+        uint32_t dest = packet_utils::string_to_number(payload, 8);
         
         auto resp = std::make_unique<SendSymResponse>();
         resp->status_code = static_cast<status_codes>(code);
+        resp->dest_id = dest;
         
         return resp;
+    }
+
+    bool is_success() const { return status_code == status_codes::delivered; }
+    
+    // Фабричные методы для удобства
+    static std::unique_ptr<Packet> success(uint32_t dest_id) {
+        return std::make_unique<SendSymResponse>(status_codes::delivered, dest_id);
+    }
+    
+    static std::unique_ptr<Packet> error(uint32_t dest_id) {
+        return std::make_unique<SendSymResponse>(status_codes::error, dest_id);
+    }
+    
+    static std::unique_ptr<Packet> not_found(uint32_t dest_id) {
+        return std::make_unique<SendSymResponse>(status_codes::not_found, dest_id);
     }
 };
 
@@ -440,6 +853,15 @@ std::unique_ptr<Packet> Packet::from_payload(const std::string& payload) {
             return SendSymRequest::from_payload(payload);
         case packet_type::send_sym_res:
             return SendSymResponse::from_payload(payload);
+        // Новые типы для handshake
+        case packet_type::handshake_req1:
+            return HandshakeRequest1::from_payload(payload);
+        case packet_type::handshake_res1:
+            return HandshakeResponse1::from_payload(payload);
+        case packet_type::handshake_req2:
+            return HandshakeRequest2::from_payload(payload);
+        case packet_type::handshake_res2:
+            return HandshakeResponse2::from_payload(payload);
         default:
             throw std::invalid_argument("Unknown packet type: " + std::to_string(type_val));
     }

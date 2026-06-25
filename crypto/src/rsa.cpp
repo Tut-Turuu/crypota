@@ -66,6 +66,16 @@ namespace rsa {
         return pow_by_mod(message, key.exp, key.mod);
     }
 
+    bool key_t::operator==(const key_t& other) const {
+        return (exp == other.exp) && (mod == other.mod);
+    }
+
+    key_t::key_t(const key_t& other): exp(other.exp), mod(other.mod) {}
+
+    key_t::key_t() = default;
+
+    key_t::key_t(const mpz_class& e, const mpz_class& m): exp(e), mod(m) {};
+
     RSA::RSA() {
         unsigned bits_size = BITS;
         mpz_class p = generate_prime(bits_size);
@@ -145,6 +155,14 @@ namespace rsa {
     }
 
 }
+
+namespace std {
+
+    size_t hash<rsa::key_t>::operator()(const rsa::key_t key) const {
+        return hash<std::string>{}(rsa::serialize_key_to_string(key));
+    }
+}
+
 
 // #include <iostream>
 // using namespace rsa;

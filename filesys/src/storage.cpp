@@ -48,6 +48,34 @@ std::string load_string(std::string filename) {
     return data;
 }
 
+bool get_server_pub(rsa::key_t& pub) {
+    try {
+        pub = rsa::load_key("server/pub.key");
+        return true;
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+        return false;
+    }
+    catch (...) {
+        std::cout << "unkown" << std::endl;
+        return false;
+    }
+}
+
+bool get_server_priv(rsa::key_t& priv) {
+    try {
+        priv = rsa::load_key("server/priv.key");
+        return true;
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+        return false;
+    }
+    catch (...) {
+        std::cout << "unkown" << std::endl;
+        return false;
+    }
+}
+
 
 bool get_my_id_from_fs(int& id) {
     try {
@@ -93,6 +121,34 @@ bool get_my_pub_from_fs(rsa::key_t& pub) {
 bool get_my_priv_from_fs(rsa::key_t& priv) {
     try {
         priv = rsa::load_key("self/priv.key");
+        return true;
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+        return false;
+    }
+    catch (...) {
+        std::cout << "unkown" << std::endl;
+        return false;
+    }
+}
+
+bool store_my_pub(const rsa::key_t& pub) {
+    try {
+        rsa::store_key("self/pub.key", pub);
+        return true;
+    } catch (const std::exception& e) {
+        std::cout << e.what() << std::endl;
+        return false;
+    }
+    catch (...) {
+        std::cout << "unkown" << std::endl;
+        return false;
+    }
+}
+
+bool store_my_priv(const rsa::key_t& priv) {
+    try {
+        rsa::store_key("self/priv.key", priv);
         return true;
     } catch (const std::exception& e) {
         std::cout << e.what() << std::endl;

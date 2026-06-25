@@ -11,6 +11,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(-fcoroutines)
 endif()
 
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -O2")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize=undefined -g -O0")
+# set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address -fsanitize=undefined")
+
 include(FetchContent)
 include(ExternalProject)
 
@@ -105,7 +109,7 @@ endif()
 
 
 add_executable(client test1.cpp)
-add_executable(server test2.cpp)
+add_executable(serv test2.cpp)
 # add_executable("${PROJECT_NAME}" main.cpp)
 
 
@@ -119,7 +123,7 @@ target_link_libraries(client
     network
 )
 
-target_link_libraries(server
+target_link_libraries(serv
     GMP::GMP
     BoostAsio::BoostAsio
     pthread

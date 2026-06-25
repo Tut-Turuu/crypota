@@ -5,22 +5,22 @@
 
 class Signer{
 private:
-    rsa::key_t priv;
+    const rsa::key_t priv;
 
 public:
 
-    Signer(rsa::key_t key);
+    Signer(const rsa::key_t& key);
 
-    std::string sign(std::string str);
+    std::string sign(const std::string& str);
 };
 
 class Verifier {
 private:
-    rsa::key_t pub;
+    const rsa::key_t pub;
 
 public:
 
-    Verifier(rsa::key_t key);
+    Verifier(const rsa::key_t& key);
 
-    bool verify(std::string signature, std::string original);
+    bool verify(const std::string& signature, const std::string& original);
 };
