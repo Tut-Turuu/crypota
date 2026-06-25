@@ -1,0 +1,147 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    padding: 0;
+    margin: 0;
+    background: #f0f2f5;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 300px;
+    background: white;
+    border-right: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-header {
+    padding: 20px;
+    background: #0084ff;
+    color: white;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.chat-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.chat-item {
+    padding: 15px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+    .chat-item:hover {
+        background: #f5f5f5;
+    }
+
+    .chat-item.active {
+        background: #e7f3ff;
+        border-left: 3px solid #0084ff;
+    }
+
+.chat-item-name {
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.chat-item-preview {
+    font-size: 14px;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.main-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #f0f2f5;
+}
+
+.chat-header {
+    padding: 20px;
+    background: white;
+    border-bottom: 1px solid #ddd;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+#chat {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.msg {
+    padding: 10px 15px;
+    border-radius: 15px;
+    max-width: 70%;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+    .msg.out {
+        background: #0084ff;
+        color: white;
+        align-self: flex-end;
+        text-align: left;
+    }
+
+    .msg.in {
+        background: white;
+        color: black;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        align-self: flex-start;
+    }
+
+.input-area {
+    padding: 20px;
+    background: white;
+    border-top: 1px solid #ddd;
+    display: flex;
+    gap: 10px;
+}
+
+input {
+    flex: 1;
+    padding: 12px 20px;
+    border-radius: 25px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+    outline: none;
+}
+
+    input:focus {
+        border-color: #0084ff;
+    }
+
+button {
+    padding: 12px 25px;
+    border-radius: 25px;
+    border: none;
+    background: #0084ff;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
+    transition: 0.2s;
+}
+
+    button:hover {
+        background: #0073e6;
+    }

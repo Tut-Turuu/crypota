@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style></style>
+</head>
+<body>
+    <div class="login-screen" id="loginScreen">
+        <div class="login-container">
+            <h1>Crypota</h1>
+            <p>Secure Encrypted Messenger</p>
+            <button onclick="connect()">Подключиться к серверу</button>
+        </div>
+    </div>
+    
+    <div class="app" id="app" style="display: none;">
+        <!-- Боковое меню с чатами -->
+        <div class="sidebar">
+            <div class="sidebar-header">Чаты</div>
+            <div class="chat-list" id="chatList"></div>
+        </div>
+        
+        <!-- Основная область чата -->
+        <div class="main-chat">
+            <div class="chat-header" id="chatHeader">Выберите чат</div>
+            <div id="chat"></div>
+            <div class="input-area">
+                <input type="text" id="msgInput" placeholder="Сообщение..." onkeypress="if(event.key==='Enter') send()">
+                <button onclick="send()">Отправить</button>
+            </div>
+        </div>
+    </div>
+    
+    <script></script>
+</body>
+</html>
