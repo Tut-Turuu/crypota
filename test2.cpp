@@ -29,6 +29,9 @@ public:
     
     // Запуск сессии
     void start() {
+        rsa::RSA alg;
+        pub_by_id[606] = alg.share_my_public_key();
+        id_by_pub[alg.share_my_public_key()] = 606;
         asio::co_spawn(
             socket_.get_executor(),
             [self = shared_from_this()]() -> asio::awaitable<void> {
@@ -47,6 +50,12 @@ private:
             while (true) {
                 auto packet = co_await read_packet();
                 co_await handle_packet(std::move(packet));
+            }
+        } catch (const boost::system::system_error& e) {
+            if (e.code() == boost::asio::error::eof) {
+                std::cout << "Client disconected" << std::endl;
+            } else {
+                std::cerr << "System error: " << e.what() << std::endl;
             }
         } catch (const std::exception& e) {
             std::cerr << "Session error: " << e.what() << std::endl;
@@ -73,8 +82,19 @@ private:
 
         length = co_await socket_.async_read_some(asio::buffer(payload), asio::use_awaitable);
 
-        std::unique_ptr<Packet> packet = Packet::from_payload(payload);
-        co_return packet;
+        if (session_secret == "") {
+
+            std::unique_ptr<Packet> packet = Packet::from_payload(payload);
+            co_return packet;
+        } else {
+            auto hmaced_packet = str_len + payload;
+            if (verify_hmac(hmaced_packet, session_secret)) {
+                std::unique_ptr<Packet> packet = Packet::from_payload(get_raw_packet(hmaced_packet).substr(4));
+                co_return packet;
+            } else {
+                throw std::runtime_error("HMAC verification failed");
+            } 
+        }
 
     }
 
@@ -110,6 +130,16 @@ private:
             case packet_type::get_other_pub_req:
                 co_await handle_get_public_key(
                     std::move(static_cast<GetOtherPubRequest&>(*packet))
+                );
+                break;
+            case packet_type::send_sym_req:
+                co_await handle_resend_sym(
+                    std::move(static_cast<SendSymRequest&>(*packet))
+                );
+                break;
+            case packet_type::send_sym_res:
+                co_await handle_resend_sym(
+                    std::move(static_cast<SendSymResponse&>(*packet))
                 );
                 break;
                 
@@ -160,12 +190,12 @@ private:
             co_return false;
         }
 
-        session_secret = mpz_to_string(rsa::decrypt_message(string_to_mpz(hand2_req->encrypted_session_id), server_priv));
+        auto tmp_session_secret = mpz_to_string(rsa::decrypt_message(string_to_mpz(hand2_req->encrypted_session_id), server_priv));
 
         auto res = HandshakeResponse2::success();
 
         co_await send_packet(*res);
-
+        session_secret = tmp_session_secret;
         co_return true;
     }
 
@@ -193,14 +223,18 @@ private:
     } 
 
     asio::awaitable<bool> handle_resend_sym(SendSymRequest req) {
-
+        std::cout << "handle_resend_sym: " << packet_utils::hex_rep(req.serialize()) << std::endl;
         auto it = sessions.find(req.destination_id);
         if (it != sessions.end()) {
             auto session = sessions[req.destination_id];
-            session->handle_send_sym(req);
+            co_await session->handle_send_sym(req);
         } else {
             queued_packets[req.destination_id].push_back(std::make_shared<SendSymRequest>(req));
         }
+
+        std::cout << "Handled handle_resend_sym" << std::endl;
+
+        co_return true;
     }
 
     asio::awaitable<bool> handle_send_sym(SendSymRequest req) {
@@ -212,10 +246,11 @@ private:
         auto it = sessions.find(res.dest_id);
         if (it != sessions.end()) {
             auto session = sessions[res.dest_id];
-            session->handle_send_sym(res);
+            co_await session->handle_send_sym(res);
         } else {
             queued_packets[res.dest_id].push_back(std::make_shared<SendSymResponse>(res));
         }
+        co_return true;
     }
 
     asio::awaitable<bool> handle_send_sym(SendSymResponse res) {
@@ -227,10 +262,11 @@ private:
         auto it = sessions.find(req.destination_id);
         if (it != sessions.end()) {
             auto session = sessions[req.destination_id];
-            session->handle_send_message(req);
+            co_await session->handle_send_message(req);
         } else {
             queued_packets[req.destination_id].push_back(std::make_shared<MessageRequest>(req));
         }
+        co_return;
     }
 
     asio::awaitable<void> handle_send_message(MessageRequest req) {
@@ -242,10 +278,11 @@ private:
         auto it = sessions.find(res.dest_id);
         if (it != sessions.end()) {
             auto session = sessions[res.dest_id];
-            session->handle_send_message(res);
+            co_await session->handle_send_message(res);
         } else {
             queued_packets[res.dest_id].push_back(std::make_shared<MessageResponse>(res));
         }
+        co_return;
     }
 
     asio::awaitable<void> handle_send_message(MessageResponse res) {
@@ -254,27 +291,37 @@ private:
     
     asio::awaitable<void> handle_get_public_key(GetOtherPubRequest req) {
         std::cout << "Get public key for user: " << req.target_user_id << std::endl;
-        
+        std::cout << "handle_get_public_key: " << packet_utils::hex_rep(req.serialize()) << std::endl;
+
         auto it = pub_by_id.find(req.target_user_id);
         if (it != pub_by_id.end()) {
             GetOtherPubResponse response(it->second);
             co_await send_packet(response);
         } else {
             // Пользователь не найден
-            MessageResponse response(404);
-            co_await send_packet(response);
+            auto response = GetOtherPubResponse::not_found();
+            co_await send_packet(*response);
         }
     }
     
     // ============ ОТПРАВКА ПАКЕТА ============
     
     asio::awaitable<void> send_packet(const Packet& packet) {
-        std::string data = packet.serialize();
-        co_await asio::async_write(
-            socket_,
-            asio::buffer(data),
-            asio::use_awaitable
-        );
+        if (session_secret == "") {
+            std::string data = packet.serialize();
+            co_await asio::async_write(
+                socket_,
+                asio::buffer(data),
+                asio::use_awaitable
+            );
+        } else {
+            std::string data = hmac_packet(packet.serialize(), session_secret);
+            co_await asio::async_write(
+                socket_,
+                asio::buffer(data),
+                asio::use_awaitable
+            );
+        }
     }
     
     // ============ ПОЛЯ ============

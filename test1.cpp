@@ -44,7 +44,11 @@ class Secure_Session {
     }
 
     void send_request(const Packet& req) {
-        asio::write(socket, asio::buffer(req.serialize()));
+        if (session_secret == "") {
+            asio::write(socket, asio::buffer(req.serialize()));
+        } else {
+            asio::write(socket, asio::buffer(hmac_packet(req.serialize(), session_secret)));
+        }
     }
 
     std::unique_ptr<Packet> recv_response() {
@@ -65,9 +69,19 @@ class Secure_Session {
         payload.resize(len);
 
         length = socket.read_some(asio::buffer(payload), ec);
+        if (session_secret == "") {
 
-        std::unique_ptr<Packet> packet = Packet::from_payload(payload);
-        return packet;
+            std::unique_ptr<Packet> packet = Packet::from_payload(payload);
+            return packet;
+        } else {
+            auto hmaced_packet = str_len + payload;
+            if (verify_hmac(hmaced_packet, session_secret)) {
+                std::unique_ptr<Packet> packet = Packet::from_payload(get_raw_packet(hmaced_packet).substr(4));
+                return packet;
+            } else {
+                throw std::runtime_error("HMAC verification failed");
+            } 
+        }
     }
 
     bool handshake() {
@@ -76,7 +90,6 @@ class Secure_Session {
         send_request(*req);
 
         auto res = recv_response();
-        std::cout << "recv1" << std::endl;
 
         auto hand1_res = dynamic_cast<HandshakeResponse1*>(res.get());
         if (hand1_res == nullptr) {
@@ -95,25 +108,26 @@ class Secure_Session {
 
         Signer sign(my_priv);
         auto signature = sign.sign(hand1_res->server_random);
-        session_secret = get_random_str(4);
+        auto tmp_session_secret = get_random_str(4);
 
-        auto encrypted_session_secret = mpz_to_string(rsa::encrypt_message(string_to_mpz(session_secret), server_pub));
+        auto encrypted_session_secret = mpz_to_string(rsa::encrypt_message(string_to_mpz(tmp_session_secret), server_pub));
         req = std::make_unique<HandshakeRequest2>(signature, encrypted_session_secret);
         send_request(*req);
 
         res = recv_response();
 
-        std::cout << "recv2" << std::endl;
         auto hand2_res = dynamic_cast<HandshakeResponse2*>(res.get());
         if (hand2_res == nullptr) {
-            std::cout << "handshake failed" << std::endl;
+            std::cout << "handshake failed wrong response" << std::endl;
             return false;
         }
 
         if (!hand2_res->is_success()) {
-            std::cout << "handshake failed" << std::endl;
+            std::cout << "handshake unsuccess" << std::endl;
             return false;
         }
+
+        session_secret = tmp_session_secret;
         return true;
     }
 
@@ -135,8 +149,8 @@ public:
 
         std::cout << "handshake_passed" << std::endl;
 
-        send_sym(1);
-        send_message(1, "doat");
+        send_sym(606);
+        send_message(060, "doat");
         
     }
 
@@ -151,6 +165,7 @@ public:
     }
 
     void registration() {
+        std::cout << "registration init " << std::endl;
         std::unique_ptr<Packet> req = std::make_unique<RegistrationRequest>(my_pub);
         send_request(*req);
 
@@ -167,9 +182,12 @@ public:
         // store_my_id(reg_res->user_id);
     }
 
-    bool get_other_pub(int dest_id) {
+    bool get_other_pub(rsa::key_t& ids_pub, int dest_id) {
+        std::cout << "get_other_pub init " << std::endl;
         std::unique_ptr<Packet> req = std::make_unique<GetOtherPubRequest>(dest_id);
-        send_request(*req);
+        // std::cout << packet_utils::hex_rep(req->serialize()) << std::endl;
+
+        send_request(*req); 
 
         auto res = recv_response();
 
@@ -182,12 +200,13 @@ public:
             std::cout << "get_other_pub server not found, id:" << dest_id << std::endl;
             return false;
         }
-
+        ids_pub = pub_res->public_key;
         store_pub_by_id(pub_res->public_key, dest_id);
         return true;
     }
 
     bool send_sym(int dest_id) {
+        std::cout << "send_sym init " << std::endl;
         aes::key_t sym;
         aes::key_gen(sym);
 
@@ -195,13 +214,16 @@ public:
         rsa::key_t ids_pub;
         if (!get_pub_by_id_from_fs(ids_pub, dest_id)) {
             std::cout << "pub by id" << dest_id << "not found" << std::endl;
+            if (!get_other_pub(ids_pub, dest_id)) {
+                return false;
+            }
         }
 
-        if (!get_other_pub(dest_id)) {
-            return false;
-        }
+
         std::string chiphered_key = mpz_to_string(rsa::encrypt_message(string_to_mpz(aes::serialize_key_to_string(sym)), ids_pub));
         std::unique_ptr<Packet> req = std::make_unique<SendSymRequest>(dest_id, chiphered_key);
+        // std::cout << "send_sym request: " << packet_utils::hex_rep(req->serialize()) << std::endl;
+        send_request(*req);      
 
         auto res = recv_response();
 
@@ -215,6 +237,7 @@ public:
     }
 
     bool send_message(int dest_id, const std::string& message) {
+        std::cout << "send_message init " << std::endl;
         aes::key_t sym;
         if (!get_sym_by_id_from_fs(sym, dest_id)) {
             send_sym(dest_id);

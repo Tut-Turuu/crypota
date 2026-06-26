@@ -10,6 +10,9 @@
 
 // быстрое возведение в степень по модулю
 mpz_class pow_by_mod(mpz_class base, mpz_class power, const mpz_class& mod) {
+	if (mod == 0) {
+		throw std::runtime_error("mod cant be equals to zero");
+	}
 	mpz_class result = 1;
 	base = base % mod;
 	while (power > 0) {

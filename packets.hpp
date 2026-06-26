@@ -2,12 +2,33 @@
 #include <memory>
 #include <stdexcept>
 #include <cstdint>
+#include <cstring>
+#include <sstream>
+#include <iomanip>
 #include "rsa.hpp"
 #include "aes.hpp"
+#include "sha256.hpp"
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
 
 namespace packet_utils {
+    std::string hex_rep(const std::string& str) {
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
+        
+        for (size_t i = 0; i < str.size(); ++i) {
+            // Добавляем пробел перед каждым 4-м байтом (кроме первого)
+            if (i > 0 && i % 4 == 0) {
+                ss << ' ';
+            }
+            
+            unsigned char c = static_cast<unsigned char>(str[i]);
+            ss << std::setw(2) << static_cast<int>(c);
+        }
+        
+        return ss.str();
+    }
+
     inline std::string number_to_string(uint32_t num) {
         std::string result(4, '\0');
         result[0] = (num >> 24) & 0xFF;
@@ -89,6 +110,84 @@ struct Packet {
 };
 
 
+
+std::string hmac_packet(const std::string& serialized_packet, const std::string& session_secret) {
+    // 1. Вычисляем HMAC (SHA-256 от пакета + секрет)
+    std::string data_to_hash = serialized_packet + session_secret;
+    std::string hash = sha256(data_to_hash);
+    
+    // 2. Формируем финальный пакет: [длина][serialized_packet][hash]
+    // Длина = длина serialized_packet + длина хэша (64 байта для hex-строки)
+    uint32_t total_length = serialized_packet.length() + hash.length();
+    
+    // Создаем бинарное представление длины (4 байта, big-endian)
+
+    
+    std::string result;
+    result += packet_utils::number_to_string(total_length);
+    result.append(serialized_packet);
+    result.append(hash);
+    
+    return result;
+}
+
+bool verify_hmac(const std::string& serialized_packet, const std::string& session_secret) {
+    // Проверяем, что пакет достаточно длинный (минимум 4 байта длины + 64 байта хэша)
+    if (serialized_packet.length() < 4 + 32) {
+        return false;
+    }
+    
+    // 1. Извлекаем длину из первых 4 байт
+    
+    uint32_t total_length = packet_utils::string_to_number(serialized_packet, 0);
+    
+    // Проверяем, что длина соответствует размеру пакета
+    if (total_length != serialized_packet.length() - 4) {
+        return false;
+    }
+    
+    // 2. Извлекаем сам пакет (все что между длиной и хэшем)
+    // Хэш всегда SHA-256 в hex-строке = 64 байта
+    size_t hash_start = 4 + total_length - 32;
+    if (hash_start < 4 || hash_start > serialized_packet.length()) {
+        return false;
+    }
+    
+    std::string packet_data = serialized_packet.substr(4, total_length - 32);
+    std::string received_hash = serialized_packet.substr(hash_start, 32);
+    
+    // 3. Вычисляем хэш от пакета с секретом
+    std::string data_to_hash = packet_data + session_secret;
+    std::string computed_hash = sha256(data_to_hash);
+    
+    // 4. Сравниваем хэши (константное сравнение для защиты от timing attacks)
+
+    // std::cout << "Hmac recived: " << packet_utils::hex_rep(received_hash) << "Hmac computed: " << packet_utils::hex_rep(computed_hash) << std::endl;
+    return computed_hash == received_hash;
+}
+
+std::string get_raw_packet(const std::string& serialized_packet) {
+    // Проверяем минимальную длину пакета
+    if (serialized_packet.length() < 4 + 32) {
+        return ""; // или throw exception
+    }
+    
+    // Извлекаем длину из первых 4 байт
+    uint32_t total_length = packet_utils::string_to_number(serialized_packet, 0);
+    
+    // Проверяем, что длина соответствует размеру пакета
+    if (total_length != serialized_packet.length() - 4) {
+        return ""; // или throw exception
+    }
+    
+    // Извлекаем внутренний пакет (без длины и хэша)
+    size_t hash_start = 4 + total_length - 32;
+    if (hash_start < 4 || hash_start > serialized_packet.length()) {
+        return "";
+    }
+    
+    return serialized_packet.substr(4, total_length - 32);
+}
 
 // ============================================================================
 // PING REQUEST (просто сигнал)
@@ -853,7 +952,6 @@ std::unique_ptr<Packet> Packet::from_payload(const std::string& payload) {
             return SendSymRequest::from_payload(payload);
         case packet_type::send_sym_res:
             return SendSymResponse::from_payload(payload);
-        // Новые типы для handshake
         case packet_type::handshake_req1:
             return HandshakeRequest1::from_payload(payload);
         case packet_type::handshake_res1:
