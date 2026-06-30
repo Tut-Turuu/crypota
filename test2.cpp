@@ -158,6 +158,9 @@ private:
             std::cout << "handshake failed" << std::endl;
             co_return true;
         }
+
+        current_user = hand1_req->user_id;
+
         auto it = pub_by_id.find(hand1_req->user_id);
         if (it != pub_by_id.end()) {
             user_pub = it->second;
@@ -196,12 +199,14 @@ private:
 
         co_await send_packet(*res);
         session_secret = tmp_session_secret;
+        sessions[current_user] = shared_from_this();
+        
         co_return true;
     }
 
     
     asio::awaitable<void> handle_registration(RegistrationRequest req) {
-        std::cout << "Registration request with public key" << std::endl;
+        std::cout << "Registration request" << std::endl;
         uint32_t user_id;
         auto it = id_by_pub.find(req.public_key);
         if (it != id_by_pub.end()) {
@@ -217,19 +222,16 @@ private:
         co_await send_packet(response);
     }
 
-    asio::awaitable<bool> handle_ping(PingRequest req) {
-        PingResponse response;
-        co_await send_packet(response);
-    } 
+
 
     asio::awaitable<bool> handle_resend_sym(SendSymRequest req) {
         std::cout << "handle_resend_sym: " << packet_utils::hex_rep(req.serialize()) << std::endl;
-        auto it = sessions.find(req.destination_id);
+        auto it = sessions.find(req.dest_id);
         if (it != sessions.end()) {
-            auto session = sessions[req.destination_id];
+            auto session = sessions[req.dest_id];
             co_await session->handle_send_sym(req);
         } else {
-            queued_packets[req.destination_id].push_back(std::make_shared<SendSymRequest>(req));
+            queued_packets[req.dest_id].push_back(std::make_shared<SendSymRequest>(req));
         }
 
         std::cout << "Handled handle_resend_sym" << std::endl;
@@ -259,12 +261,12 @@ private:
     }
     
     asio::awaitable<void> handle_resend_message(MessageRequest req) {
-        auto it = sessions.find(req.destination_id);
+        auto it = sessions.find(req.dest_id);
         if (it != sessions.end()) {
-            auto session = sessions[req.destination_id];
+            auto session = sessions[req.dest_id];
             co_await session->handle_send_message(req);
         } else {
-            queued_packets[req.destination_id].push_back(std::make_shared<MessageRequest>(req));
+            queued_packets[req.dest_id].push_back(std::make_shared<MessageRequest>(req));
         }
         co_return;
     }
@@ -291,11 +293,11 @@ private:
     
     asio::awaitable<void> handle_get_public_key(GetOtherPubRequest req) {
         std::cout << "Get public key for user: " << req.target_user_id << std::endl;
-        std::cout << "handle_get_public_key: " << packet_utils::hex_rep(req.serialize()) << std::endl;
+
 
         auto it = pub_by_id.find(req.target_user_id);
         if (it != pub_by_id.end()) {
-            GetOtherPubResponse response(it->second);
+            GetOtherPubResponse response(it->second, req.target_user_id);
             co_await send_packet(response);
         } else {
             // Пользователь не найден

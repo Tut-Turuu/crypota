@@ -179,7 +179,8 @@ public:
         }
 
         my_id = reg_res->user_id;
-        // store_my_id(reg_res->user_id);
+        std::cout << "my new id is: " << my_id << std::endl;
+        // store_my_id(reg_res->user _id);
     }
 
     bool get_other_pub(rsa::key_t& ids_pub, int dest_id) {

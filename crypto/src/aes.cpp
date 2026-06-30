@@ -87,7 +87,7 @@ namespace aes {
         u32 nk = 4;
         u32 nr = 10;
 
-        memcpy(word128x11, key128, 128);
+        memcpy(word128x11, key128, 16);
 
         u32 i = nk;
         u32 temp;
@@ -97,9 +97,9 @@ namespace aes {
             if (i % nk == 0) {
                 rot_word((u8*)&temp);
                 sub_word((u8*)&temp);
-                temp ^= *(u32*)(rcon + i - 4);
+                temp ^= ((u32*)rcon)[i / nk - 1]; 
             }
-            temp ^= *(u32*)(word128x11 + (i - nk)*4);
+            temp ^= ((u32*)word128x11)[i - nk];
             memcpy(word128x11 + i*4, &temp, 4);
             i += 1;
         }

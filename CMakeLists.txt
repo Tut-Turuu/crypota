@@ -128,20 +128,20 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(webview)
 
-add_executable(client_gui interface/main.cpp)
-add_executable(client test1.cpp)
+# add_executable(client_gui interface/main.cpp)
+add_executable(client async_client.cpp)
 add_executable(serv test2.cpp)
 # add_executable("${PROJECT_NAME}" main.cpp)
 
-target_link_libraries(client_gui
-    GMP::GMP
-    BoostAsio::BoostAsio
-    pthread
-    filesys
-    crypto
-    network
-    webview::core
-)
+# target_link_libraries(client_gui
+#     GMP::GMP
+#     BoostAsio::BoostAsio
+#     pthread
+#     filesys
+#     crypto
+#     network
+#     webview::core
+# )
 
 target_link_libraries(client
     GMP::GMP
